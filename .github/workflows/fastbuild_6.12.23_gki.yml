@@ -278,6 +278,14 @@ jobs:
             echo "正在配置SukiSU Ultra..."
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
             cd ./KernelSU
+            # 兼容上游目录调整：部分分支把 uapi 放在仓库根目录，内核构建只会链接 kernel/
+            if [[ -d ./uapi && ! -d ./kernel/uapi ]]; then
+              cp -r ./uapi ./kernel/uapi
+            fi
+            # 兜底处理：若编译侧未正确带上 include 路径，则提供同级头文件避免找不到 klog.h
+            if [[ -f ./kernel/include/klog.h && ! -f ./kernel/klog.h ]]; then
+              cp ./kernel/include/klog.h ./kernel/klog.h
+            fi
             
             if [[ -n "$MANUAL_HASH" ]]; then
               git fetch origin "$BRANCH_NAME" --depth=50
@@ -319,6 +327,14 @@ jobs:
             echo "正在配置ReSukiSU..."
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
             cd ./KernelSU
+            # 兼容上游目录调整：部分分支把 uapi 放在仓库根目录，内核构建只会链接 kernel/
+            if [[ -d ./uapi && ! -d ./kernel/uapi ]]; then
+              cp -r ./uapi ./kernel/uapi
+            fi
+            # 兜底处理：若编译侧未正确带上 include 路径，则提供同级头文件避免找不到 klog.h
+            if [[ -f ./kernel/include/klog.h && ! -f ./kernel/klog.h ]]; then
+              cp ./kernel/include/klog.h ./kernel/klog.h
+            fi
             
             if [[ -n "$MANUAL_HASH" ]]; then
               git fetch origin "$BRANCH_NAME" --depth=50
@@ -364,6 +380,18 @@ jobs:
             sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" kernel/Kbuild
           else
             echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
+          fi
+
+          # 统一修复 KernelSU 目录布局差异，避免头文件缺失导致编译失败
+          if [[ ${{ github.event.inputs.ksu_type }} != "none" && -d ./KernelSU ]]; then
+            cd ./KernelSU
+            if [[ -d ./uapi && ! -d ./kernel/uapi ]]; then
+              cp -r ./uapi ./kernel/uapi
+            fi
+            if [[ -f ./kernel/include/klog.h && ! -f ./kernel/klog.h ]]; then
+              cp ./kernel/include/klog.h ./kernel/klog.h
+            fi
+            cd ..
           fi
 
       - name: 应用 KernelSU & SUSFS 补丁
