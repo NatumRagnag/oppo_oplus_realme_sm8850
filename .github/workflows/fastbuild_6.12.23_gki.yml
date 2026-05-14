@@ -278,6 +278,14 @@ jobs:
             echo "正在配置SukiSU Ultra..."
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
             cd ./KernelSU
+            # 兼容上游目录调整：部分分支把 uapi 放在仓库根目录，内核构建只会链接 kernel/
+            if [[ -d ./uapi && ! -d ./kernel/uapi ]]; then
+              cp -r ./uapi ./kernel/uapi
+            fi
+            # 兜底处理：若编译侧未正确带上 include 路径，则提供同级头文件避免找不到 klog.h
+            if [[ -f ./kernel/include/klog.h && ! -f ./kernel/klog.h ]]; then
+              cp ./kernel/include/klog.h ./kernel/klog.h
+            fi
             
             if [[ -n "$MANUAL_HASH" ]]; then
               git fetch origin "$BRANCH_NAME" --depth=50
@@ -319,6 +327,14 @@ jobs:
             echo "正在配置ReSukiSU..."
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
             cd ./KernelSU
+            # 兼容上游目录调整：部分分支把 uapi 放在仓库根目录，内核构建只会链接 kernel/
+            if [[ -d ./uapi && ! -d ./kernel/uapi ]]; then
+              cp -r ./uapi ./kernel/uapi
+            fi
+            # 兜底处理：若编译侧未正确带上 include 路径，则提供同级头文件避免找不到 klog.h
+            if [[ -f ./kernel/include/klog.h && ! -f ./kernel/klog.h ]]; then
+              cp ./kernel/include/klog.h ./kernel/klog.h
+            fi
             
             if [[ -n "$MANUAL_HASH" ]]; then
               git fetch origin "$BRANCH_NAME" --depth=50
