@@ -391,6 +391,7 @@ jobs:
             cd ./KernelSU
             patch -p1 < 10_enable_susfs_for_ksu.patch || true
             grep -q '^bool ksu_late_loaded' kernel/core/init.c || sed -i '/struct cred \*ksu_cred;/a bool ksu_late_loaded = false;' kernel/core/init.c
+            grep -q 'hook/lsm_hook.o' kernel/Kbuild || printf '\nkernelsu-objs += hook/lsm_hook.o\nkernelsu-objs += hook/syscall_event_bridge.o\nkernelsu-objs += hook/syscall_hook_manager.o\nkernelsu-objs += hook/tp_marker.o\nifeq ($(CONFIG_ARM64),y)\nkernelsu-objs += hook/arm64/patch_memory.o\nkernelsu-objs += hook/arm64/syscall_hook.o\nendif\n' >> kernel/Kbuild
           fi
           
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
