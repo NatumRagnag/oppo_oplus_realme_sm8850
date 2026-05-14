@@ -390,7 +390,7 @@ jobs:
             cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
             cd ./KernelSU
             patch -p1 < 10_enable_susfs_for_ksu.patch || true
-            grep -q 'bool ksu_late_loaded' kernel/core/init.c || sed -i '/struct cred \\*ksu_cred;/a bool ksu_late_loaded = false;' kernel/core/init.c
+            grep -q '^bool ksu_late_loaded' kernel/core/init.c || sed -i '/struct cred \\*ksu_cred;/a bool ksu_late_loaded = false;' kernel/core/init.c
           fi
           
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
