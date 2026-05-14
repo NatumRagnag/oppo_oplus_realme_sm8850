@@ -362,6 +362,13 @@ jobs:
             echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
             echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
             sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" kernel/Kbuild
+            mkdir -p kernel/uapi
+            cp -f uapi/*.h kernel/uapi/
+            grep -q 'KernelSU root include path' kernel/Kbuild || cat >> kernel/Kbuild <<'EOF'
+
+# KernelSU root include path for current upstream layout.
+ccflags-y += -I$(srctree)/../KernelSU/kernel/include -I$(srctree)/../KernelSU/kernel -I$(srctree)/../KernelSU
+EOF
           else
             echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
           fi
