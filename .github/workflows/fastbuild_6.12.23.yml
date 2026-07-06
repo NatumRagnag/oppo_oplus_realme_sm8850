@@ -22,6 +22,11 @@ on:
           - 'ksunext'
           - 'ksu'
           - 'none'
+      ksu_meta:
+        description: 'KSU分支名(必填)/自定义版本标识(留空不修改)/回退分支提交哈希(留空不修改)，格式：branch/custom/hash'
+        required: true
+        type: string
+        default: 'main//'
       susfs_enable:
         description: '是否开启susfs(用于增强隐藏环境挂载功能; 可能轻微增加耗电，上游更新导致不稳定时或不需要可关闭)'
         required: true
@@ -39,6 +44,11 @@ on:
         default: 'true'
       lz4kd_enable:
         description: '是否安装 LZ4KD 补丁(若已开启lz4+zstd补丁则可不开启)'
+        required: true
+        type: boolean
+        default: 'false'
+      unicode_bypass:
+        description: '是否添加 Unicode 不可见字码点绕过读取漏洞修复'
         required: true
         type: boolean
         default: 'false'
@@ -253,44 +263,9 @@ jobs:
       - name: 添加KernelSU
         id: ksu_version
         run: |
-          # 进入内核工作目录
           cd kernel_workspace
-          if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" || ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
-            echo "正在配置ReSukiSU（由于SukiSU长期未维护无法正常编译，且ReSukiSU兼容sukisu管理器，故SukiSU源码仓库已重定向为resukisu）..."
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
-            echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%@cctv18"' >> ./common/arch/arm64/configs/gki_defconfig
-            cd ./KernelSU
-            # 生成自定义版本号（基于提交计数）, 失败时使用 114514
-            KSU_VERSION=$(expr $(git rev-list --count main) + 30700 2>/dev/null || echo 114514)
-            # 存储版本号到 GitHub 环境变量
-            echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-            echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-          elif [[ ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
-            echo "正在配置KernelSU Next..."
-            curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
-            cd KernelSU-Next
-            rm -rf .git
-            KSU_VERSION=$(expr $(curl -sI "https://api.github.com/repos/pershoot/KernelSU-Next/commits?sha=dev&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p') "+" 30000)
-            echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-            echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-            sed -i "s/KSU_VERSION_FALLBACK := 1/KSU_VERSION_FALLBACK := $KSU_VERSION/g" kernel/Kbuild
-            KSU_GIT_TAG=$(curl -sL "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/tags" | grep -o '"name": *"[^"]*"' | head -n 1 | sed 's/"name": "//;s/"//')
-            sed -i "s/KSU_VERSION_TAG_FALLBACK := v0.0.1/KSU_VERSION_TAG_FALLBACK := $KSU_GIT_TAG/g" kernel/Kbuild
-            #为KernelSU Next添加WildKSU管理器支持
-            cd ../common/drivers/kernelsu
-            wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/apk_sign.patch
-            patch -p2 -N -F 3 < apk_sign.patch || true
-          elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
-            echo "正在配置原版 KernelSU (tiann/KernelSU)..."
-            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s main
-            cd ./KernelSU
-            KSU_VERSION=$(expr $(curl -sI "https://api.github.com/repos/tiann/KernelSU/commits?sha=main&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p') "+" 30000)
-            echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-            echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-            sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" kernel/Kbuild
-          else
-            echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
-          fi
+          wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/scripts/install_ksu.sh -O /tmp/install_ksu.sh
+          bash /tmp/install_ksu.sh "${{ github.event.inputs.ksu_type }}" "${{ github.event.inputs.ksu_meta }}"
 
       - name: 应用 KernelSU & SUSFS 补丁
         if: inputs.susfs_enable
@@ -334,6 +309,13 @@ jobs:
           cd kernel_workspace/common
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/lz4kd.patch
           patch -p1 -F 3 < lz4kd.patch || true
+
+      - name: 应用 Unicode 不可见字码点绕过读取漏洞修复
+        if: inputs.unicode_bypass
+        run: |
+          cd kernel_workspace/common
+          wget https://raw.githubusercontent.com/Numbersf/Action-Build/SukiSU-Ultra/patches/unicode_bypass_fix_6.1%2B.patch -O unicode_bypass_fix.patch
+          patch -p1 -F 3 --forward < unicode_bypass_fix.patch || true
           
       - name: 添加SUSFS 配置项
         if: inputs.susfs_enable
@@ -759,10 +741,12 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
+          echo "KSU Meta: ${{ github.event.inputs.ksu_meta }}" >> ./ak3.log
           echo "susfs: ${{ github.event.inputs.susfs_enable }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
           echo "LZ4KD: ${{ github.event.inputs.lz4kd_enable }}" >> ./ak3.log
+          echo "Unicode Bypass Fix: ${{ github.event.inputs.unicode_bypass }}" >> ./ak3.log
           echo "IPset: ${{ github.event.inputs.better_net }}" >> ./ak3.log
           echo "BBR&Brutal: ${{ github.event.inputs.bbr_enable }}" >> ./ak3.log
           echo "Droidspaces: ${{ github.event.inputs.droidspaces_enable }}" >> ./ak3.log
@@ -843,10 +827,12 @@ jobs:
           - 编译时间: ${{ env.TIME_FORM }}
           - 机型：欧加真骁龙8E Gen5通用 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 内核（基于一加15 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 版官方源码）
           - KSU分支：${{ env.KSU_TYPENAME }}
+          - KSU元数据：${{ github.event.inputs.ksu_meta }}
           - susfs支持：${{ github.event.inputs.susfs_enable }}
           - KPM支持 ：${{ github.event.inputs.kpm_enable }}
           - LZ4支持：${{ github.event.inputs.lz4_enable }}
           - LZ4KD支持：${{ github.event.inputs.lz4kd_enable }}
+          - Unicode不可见字码点修复：${{ github.event.inputs.unicode_bypass }}
           - 网络功能增强：${{ github.event.inputs.better_net }}
           - BBR/Brutal 等拥塞控制算法支持：${{ github.event.inputs.bbr_enable }}
           - Droidspaces 容器支持：${{ github.event.inputs.droidspaces_enable }}
